@@ -1,0 +1,64 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+    env_file:
+      - .env.example
+    environment:
+      STORE_INTEL_DATABASE_PATH: /app/data/store_intelligence.db
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./data/CCTV Footage:/app/data/CCTV Footage:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dashboard
+    command:
+      - streamlit
+      - run
+      - dashboard/streamlit_app.py
+      - --server.address=0.0.0.0
+      - --server.port=8501
+      - --server.headless=true
+    environment:
+      STORE_INTEL_API_URL: http://api:8000
+      STORE_INTEL_DASHBOARD_STORE_ID: STORE_BLR_002
+    ports:
+      - "8501:8501"
+    depends_on:
+      api:
+        condition: service_started
+
+  pipeline:
+    profiles:
+      - pipeline
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: pipeline
+      args:
+        INSTALL_OPENCV_LIBS: "1"
+    # Keep OpenCV/Torch/Ultralytics isolated from the API and dashboard images.
+    # The pipeline image is intentionally heavier and is used for manual runs and future ingestion jobs.
+    command:
+      - sleep
+      - infinity
+    env_file:
+      - .env.example
+    environment:
+      STORE_INTEL_DATABASE_PATH: /app/data/store_intelligence.db
+    volumes:
+      - ./data:/app/data
+      - ./data/CCTV Footage:/app/data/CCTV Footage
